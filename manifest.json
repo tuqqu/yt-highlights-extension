@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Highlights",
+  "version": "1.0",
+  "description": "Adds a highlights button to YouTube profile video tabs.",
+  "permissions": ["scripting"],
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ]
+}
