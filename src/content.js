@@ -7,20 +7,27 @@ function insertButtons() {
     const highlightsButtonId = 'yt-highlights-chip';
     const resetButtonId = 'yt-reset-highlights-chip';
 
-    const chipsContainer = document.querySelector('ytd-feed-filter-chip-bar-renderer #chips');
-    if (!chipsContainer || document.getElementById(highlightsButtonId) || document.getElementById(resetButtonId)) {
+    const divPrimary = document.querySelector('div#primary');
+    const chipsContainer = divPrimary.querySelector('div#header ytd-feed-filter-chip-bar-renderer #chips');
+    if (!chipsContainer) {
+        console.log('Container not found');
+        return;
+    }
+
+    if (document.getElementById(highlightsButtonId) || document.getElementById(resetButtonId)) {
+        console.log('Buttons already inserted');
         return;
     }
 
     const templateChip = chipsContainer.querySelectorAll('yt-chip-cloud-chip-renderer')[1];
     if (!templateChip) {
+        console.error('Template chip not found');
         return;
     }
 
     const chipBuilder = new ChipBuilder(chipsContainer, templateChip);
-
     chipBuilder.createChip(highlightsButtonId, 'Highlights', removeLowOutliers, '#fe3131', '#100f0f');
-    chipBuilder.createChip(resetButtonId, 'Reset', reset);
+    chipBuilder.createChip(resetButtonId, 'Reset highlights', reset, '#703232', '#050505');
 }
 
 /**
@@ -34,7 +41,6 @@ function observePage() {
     });
 
     observer.observe(document.body, {childList: true, subtree: true});
-    insertButtons();
 }
 
 class ChipBuilder {
@@ -80,7 +86,6 @@ class ChipBuilder {
             formattedString.removeAttribute('is-empty');
         }
     }
-
 }
 
 /**
@@ -93,9 +98,9 @@ function reset() {
         i++;
     }
 
-    console.log(`Showed ${i} videos`);
-
     hiddenVideos.clear();
+
+    console.log(`Showed ${i} videos`);
 }
 
 /**
@@ -106,7 +111,7 @@ function removeLowOutliers() {
      * @type {Map<number, Set<HTMLElement>>}
      */
     const viewVideoMap = getViewsVideosMap();
-    const outliers = findLowOutliers(Array.from(viewVideoMap.keys()));
+    const outliers = filterOutHighOutliers(Array.from(viewVideoMap.keys()));
 
     let i = 0;
     for (const v of outliers) {
@@ -136,6 +141,12 @@ function getViewsVideosMap() {
 
     for (let i = 0; i < allVideos.length; i++) {
         const metadata = allVideos[i].querySelector('#metadata-line');
+
+        if (!metadata) {
+            console.warn('Metadata line not found for video:', allVideos[i]);
+            continue;
+        }
+
         const data = metadata.querySelectorAll('span.ytd-video-meta-block')
         const views = parseViews(data[0].textContent)
 
@@ -155,33 +166,31 @@ function getViewsVideosMap() {
  * @param {number[]} views
  * @returns {number[]}
  */
-function findLowOutliers(views) {
+function filterOutHighOutliers(views) {
     if (views.length < 10) {
         return [];
     }
 
     const sorted = [...views].sort((a, b) => a - b);
-    console.log(`Sorted views: ${sorted}`);
-    // remove 10% of the highest values
-    const upperBound = Math.ceil(sorted.length * 0.90);
+    // remove 15% of the highest values
+    const upperBound = Math.ceil(sorted.length * 0.85);
     const trimmed = sorted.slice(0, upperBound);
-    console.log(`trimmed views: ${trimmed}`);
 
-    const getPercentile = (arr, p) => {
-        const index = (p / 100) * (arr.length - 1);
+    const getPercentile = (vec, p) => {
+        const index = (p / 100) * (vec.length - 1);
 
         const lower = Math.floor(index);
         const upper = Math.ceil(index);
 
         if (lower === upper) {
-            return arr[lower];
+            return vec[lower];
         }
 
-        return arr[lower] + (arr[upper] - arr[lower]) * (index - lower);
+        return vec[lower] + (vec[upper] - vec[lower]) * (index - lower);
     };
 
-    const q1 = getPercentile(trimmed, 25);
-    const q3 = getPercentile(trimmed, 75);
+    const q1 = getPercentile(trimmed, 30);
+    const q3 = getPercentile(trimmed, 70);
     const iqr = q3 - q1;
     const threshold = q3 + 1.5 * iqr;
 
@@ -214,8 +223,36 @@ function parseViews(views) {
     return num;
 }
 
+/**
+ * @returns {void}
+ */
+function waitForChipsAndInsertButtons() {
+    const maxRetries = 50;
+    let retries = 0;
+
+    const interval = setInterval(() => {
+        const chipsContainer = document.querySelector('div#header ytd-feed-filter-chip-bar-renderer #chips');
+        const templateChip = chipsContainer?.querySelectorAll('yt-chip-cloud-chip-renderer')[1];
+
+        if (chipsContainer && templateChip) {
+            if (window.location.pathname.includes('/videos')) {
+                console.log('Chips and template found, inserting buttons');
+                insertButtons();
+            }
+
+            clearInterval(interval);
+        } else {
+            retries++;
+            if (retries > maxRetries) {
+                console.warn('Chips not found after multiple retries');
+                clearInterval(interval);
+            }
+        }
+    }, 200);
+}
+
 window.addEventListener('yt-navigate-finish', () => {
-    setTimeout(insertButtons, 1000);
+    setTimeout(waitForChipsAndInsertButtons, 1000);
 });
 
 observePage();
